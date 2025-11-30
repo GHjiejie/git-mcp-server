@@ -14,6 +14,8 @@ export class ChatController {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // 禁用 Nginx 缓冲
+    res.flushHeaders(); // 立即发送响应头
 
     try {
       // 检查 Ollama 服务是否可用

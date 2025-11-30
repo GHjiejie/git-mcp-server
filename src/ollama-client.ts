@@ -28,7 +28,12 @@ ${commits}
       },
       body: JSON.stringify({
         model: model,
-        prompt: prompt,
+        messages: [
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
         stream: false,
       }),
     });
@@ -38,7 +43,7 @@ ${commits}
     }
 
     const data = await response.json();
-    return data.response || "生成总结失败";
+    return data.message?.content || "生成总结失败";
   } catch (error: any) {
     console.error("Ollama API 调用失败:", error);
     return `⚠️ AI 总结生成失败: ${error.message}\n请确保 Ollama 服务正在运行 (http://localhost:11434)`;

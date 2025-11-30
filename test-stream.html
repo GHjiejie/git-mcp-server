@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>流式输出测试</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+
+    #output {
+      border: 1px solid #ccc;
+      padding: 20px;
+      min-height: 200px;
+      white-space: pre-wrap;
+      background-color: #f5f5f5;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .streaming {
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <h1>流式输出测试</h1>
+  <button onclick="testStream()">测试流式输出</button>
+  <button onclick="clearOutput()">清除输出</button>
+  <h2>输出:</h2>
+  <div id="output"></div>
+  <div id="status"></div>
+
+  <script>
+    async function testStream() {
+      const output = document.getElementById('output');
+      const status = document.getElementById('status');
+
+      output.textContent = '';
+      status.textContent = '正在连接...';
+      status.className = 'streaming';
+
+      try {
+        const response = await fetch('http://localhost:3001/api/chat/stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: '请用一段话介绍一下 Git'
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        status.textContent = '正在接收数据...';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            status.textContent = '完成！';
+            status.className = '';
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+
+          // 保留最后一个可能不完整的行
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.slice(6).trim();
+
+              if (dataStr === '[DONE]') {
+                status.textContent = '完成！';
+                status.className = '';
+                return;
+              }
+
+              try {
+                const data = JSON.parse(dataStr);
+                if (data.content) {
+                  output.textContent += data.content;
+                  // 自动滚动到底部
+                  output.scrollTop = output.scrollHeight;
+                }
+                if (data.error) {
+                  output.textContent += `\n\n错误: ${data.error}`;
+                }
+              } catch (e) {
+                console.warn('Invalid JSON:', dataStr);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        status.textContent = `错误: ${error.message}`;
+        status.className = '';
+        output.textContent = `发生错误: ${error.message}`;
+      }
+    }
+
+    function clearOutput() {
+      document.getElementById('output').textContent = '';
+      document.getElementById('status').textContent = '';
+    }
+  </script>
+</body>
+
+</html>

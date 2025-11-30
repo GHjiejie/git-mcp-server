@@ -30,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, reactive, nextTick } from "vue";
 import Sidebar from "./components/Sidebar.vue";
 import Header from "./components/Header.vue";
 import ChatArea from "./components/ChatArea.vue";
@@ -96,14 +96,14 @@ function deleteConversation(id: string) {
 async function handleSendMessage(content: string, tool?: Tool, params?: any) {
   if (!currentConversation.value) return;
 
-  const userMessage: Message = {
+  const userMessage: Message = reactive({
     id: Date.now().toString(),
     role: "user",
     content: tool
       ? `使用工具: ${tool.name}\n${JSON.stringify(params, null, 2)}`
       : content,
     timestamp: Date.now(),
-  };
+  });
 
   currentConversation.value.messages.push(userMessage);
   currentConversation.value.updatedAt = Date.now();
@@ -116,13 +116,13 @@ async function handleSendMessage(content: string, tool?: Tool, params?: any) {
       content.substring(0, 30) + (content.length > 30 ? "..." : "");
   }
 
-  const assistantMessage: Message = {
+  const assistantMessage: Message = reactive({
     id: (Date.now() + 1).toString(),
     role: "assistant",
     content: "",
     timestamp: Date.now(),
     streaming: true,
-  };
+  });
 
   currentConversation.value.messages.push(assistantMessage);
   isStreaming.value = true;
@@ -184,23 +184,56 @@ async function streamChatResponse(content: string, message: Message) {
 
   if (!reader) throw new Error("No response body");
 
+  let buffer = "";
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
 
-    const chunk = decoder.decode(value, { stream: true });
-    const lines = chunk.split("\n");
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+
+    // 保留最后一个可能不完整的行
+    buffer = lines.pop() || "";
 
     for (const line of lines) {
       if (line.startsWith("data: ")) {
+        const dataStr = line.slice(6).trim();
+
+        // 检查是否是结束标记
+        if (dataStr === "[DONE]") {
+          return;
+        }
+
         try {
-          const data = JSON.parse(line.slice(6));
+          const data = JSON.parse(dataStr);
           if (data.content) {
             message.content += data.content;
+            await nextTick();
+          }
+          if (data.error) {
+            message.content += `\n\n错误: ${data.error}`;
           }
         } catch (e) {
           // Skip invalid JSON
+          console.warn("Invalid JSON in SSE:", dataStr);
         }
+      }
+    }
+  }
+
+  // 处理剩余的 buffer
+  if (buffer.trim() && buffer.startsWith("data: ")) {
+    const dataStr = buffer.slice(6).trim();
+    if (dataStr !== "[DONE]") {
+      try {
+        const data = JSON.parse(dataStr);
+        if (data.content) {
+          message.content += data.content;
+          await nextTick();
+        }
+      } catch (e) {
+        // Skip invalid JSON
       }
     }
   }

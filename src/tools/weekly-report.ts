@@ -19,19 +19,35 @@ export async function generateWeeklyReport(
 
   // 获取最近 N 天的提交
   const sinceDate = `${days}.days.ago`;
-  const authorFilter = author ? `--author="${author}"` : "";
-  const branchFilter = branch ? branch : "";
+  const authorArg = author ? `--author="${author}"` : "";
+  const sinceArg = `--since="${sinceDate}"`;
+  const branchArg = branch ? `"${branch}"` : "";
+
+  const buildLogCommand = (extra: string) =>
+    ["git log", authorArg, sinceArg, extra, branchArg]
+      .filter((part) => part && part.trim())
+      .join(" ");
 
   // 获取详细的提交信息
-  const logCommand = `git log ${branchFilter} ${authorFilter} --since="${sinceDate}" --pretty=format:"%h|%an|%ae|%ad|%s" --date=short`;
+  const logCommand = buildLogCommand(
+    '--pretty=format:"%h|%an|%ae|%ad|%s" --date=short'
+  );
   const logResult = await executeGitCommand(directory, logCommand);
 
   // 获取统计信息
-  const statsCommand = `git log ${branchFilter} ${authorFilter} --since="${sinceDate}" --pretty=tformat: --numstat`;
+  const statsCommand = buildLogCommand("--pretty=tformat: --numstat");
   const statsResult = await executeGitCommand(directory, statsCommand);
 
   // 获取参与的作者列表
-  const authorsCommand = `git log ${branchFilter} --since="${sinceDate}" --pretty=format:"%an" | sort -u`;
+  const authorsCommand = [
+    "git log",
+    sinceArg,
+    '--pretty=format:"%an"',
+    branchArg,
+    "| sort -u",
+  ]
+    .filter((part) => part && part.trim())
+    .join(" ");
   const authorsResult = await executeGitCommand(directory, authorsCommand);
 
   if (!logResult.stdout.trim()) {

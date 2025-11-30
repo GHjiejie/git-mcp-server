@@ -1,6 +1,6 @@
 // Ollama 服务 - 用于 API 服务器
 
-const OLLAMA_API_URL = "http://localhost:11434/api/generate";
+const OLLAMA_API_URL = "http://localhost:11434/api/chat";
 const DEFAULT_MODEL = "deepseek-r1:7b";
 
 export class OllamaService {
@@ -19,7 +19,12 @@ export class OllamaService {
         },
         body: JSON.stringify({
           model: model,
-          prompt: message,
+          messages: [
+            {
+              role: "user",
+              content: message,
+            },
+          ],
           stream: true,
         }),
       });
@@ -51,8 +56,9 @@ export class OllamaService {
           if (line.trim()) {
             try {
               const data = JSON.parse(line);
-              if (data.response) {
-                yield data.response;
+              // /api/chat 接口返回的字段是 message.content
+              if (data.message?.content) {
+                yield data.message.content;
               }
               if (data.done) {
                 return;
@@ -68,8 +74,8 @@ export class OllamaService {
       if (buffer.trim()) {
         try {
           const data = JSON.parse(buffer);
-          if (data.response) {
-            yield data.response;
+          if (data.message?.content) {
+            yield data.message.content;
           }
         } catch (e) {
           // 忽略
