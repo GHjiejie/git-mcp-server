@@ -12,6 +12,54 @@ import { z } from "zod";
 
 const execAsync = promisify(exec);
 
+// Ollama API 配置
+const OLLAMA_API_URL = "http://localhost:11434/api/generate";
+const DEFAULT_MODEL = "deepseek-r1:7b";
+
+// 调用 Ollama API 生成总结
+async function generateSummaryWithOllama(
+  commits: string,
+  model: string = DEFAULT_MODEL
+): Promise<string> {
+  try {
+    const prompt = `你是一个专业的技术周报撰写助手。请根据以下 Git 提交记录，生成一份专业的工作周报总结。
+
+要求：
+1. 总结本周的主要工作内容和成果
+2. 按照功能开发、Bug修复、代码优化等分类
+3. 突出重点工作和技术亮点
+4. 使用简洁专业的语言
+5. 使用中文回复
+
+Git 提交记录：
+${commits}
+
+请生成周报总结：`;
+
+    const response = await fetch(OLLAMA_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: model,
+        prompt: prompt,
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama API 请求失败: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.response || "生成总结失败";
+  } catch (error: any) {
+    console.error("Ollama API 调用失败:", error);
+    return `⚠️ AI 总结生成失败: ${error.message}\n请确保 Ollama 服务正在运行 (http://localhost:11434)`;
+  }
+}
+
 // Git 操作的工具定义
 const tools = [
   {
@@ -223,7 +271,8 @@ const tools = [
   },
   {
     name: "git_weekly_report",
-    description: "生成最近一周的 Git 提交周报，包含提交统计和详细信息",
+    description:
+      "生成最近一周的 Git 提交周报，包含提交统计和详细信息，使用 AI 生成智能总结",
     inputSchema: {
       type: "object",
       properties: {
@@ -243,6 +292,16 @@ const tools = [
           type: "number",
           description: "统计天数（默认 7 天）",
           default: 7,
+        },
+        model: {
+          type: "string",
+          description: "使用的 Ollama 模型（默认 deepseek-r1:1.5b）",
+          default: "deepseek-r1:1.5b",
+        },
+        useAI: {
+          type: "boolean",
+          description: "是否使用 AI 生成总结（默认 true）",
+          default: true,
         },
       },
       required: ["directory"],
@@ -522,11 +581,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           author,
           branch,
           days = 7,
+          model = DEFAULT_MODEL,
+          useAI = true,
         } = args as {
           directory: string;
           author?: string;
           branch?: string;
           days?: number;
+          model?: string;
+          useAI?: boolean;
         };
 
         // 获取最近 N 天的提交
@@ -650,48 +713,63 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         });
 
         report.push("## 💡 工作总结\n");
-        report.push("本周主要工作内容：");
 
-        // 根据提交信息生成简要总结
-        const featureCommits = commits.filter(
-          (c) =>
-            c.message.toLowerCase().includes("feat") ||
-            c.message.toLowerCase().includes("feature") ||
-            c.message.includes("新增") ||
-            c.message.includes("添加")
-        );
-        const fixCommits = commits.filter(
-          (c) =>
-            c.message.toLowerCase().includes("fix") ||
-            c.message.includes("修复") ||
-            c.message.includes("bug")
-        );
-        const refactorCommits = commits.filter(
-          (c) =>
-            c.message.toLowerCase().includes("refactor") ||
-            c.message.includes("重构") ||
-            c.message.includes("优化")
-        );
+        if (useAI) {
+          // 使用 AI 生成总结
+          report.push("_正在使用 AI 生成智能总结..._\n");
 
-        if (featureCommits.length > 0) {
-          report.push(`\n**新功能开发** (${featureCommits.length} 项)：`);
-          featureCommits.slice(0, 5).forEach((c) => {
-            report.push(`- ${c.message}`);
-          });
-        }
+          // 准备提交信息给 AI
+          const commitsText = commits
+            .map((c) => `[${c.date}] ${c.authorName}: ${c.message}`)
+            .join("\n");
 
-        if (fixCommits.length > 0) {
-          report.push(`\n**问题修复** (${fixCommits.length} 项)：`);
-          fixCommits.slice(0, 5).forEach((c) => {
-            report.push(`- ${c.message}`);
-          });
-        }
+          const aiSummary = await generateSummaryWithOllama(commitsText, model);
+          report.push(aiSummary);
+          report.push("");
+        } else {
+          // 使用原有的简单分类总结
+          report.push("本周主要工作内容：");
 
-        if (refactorCommits.length > 0) {
-          report.push(`\n**代码优化** (${refactorCommits.length} 项)：`);
-          refactorCommits.slice(0, 5).forEach((c) => {
-            report.push(`- ${c.message}`);
-          });
+          const featureCommits = commits.filter(
+            (c) =>
+              c.message.toLowerCase().includes("feat") ||
+              c.message.toLowerCase().includes("feature") ||
+              c.message.includes("新增") ||
+              c.message.includes("添加")
+          );
+          const fixCommits = commits.filter(
+            (c) =>
+              c.message.toLowerCase().includes("fix") ||
+              c.message.includes("修复") ||
+              c.message.includes("bug")
+          );
+          const refactorCommits = commits.filter(
+            (c) =>
+              c.message.toLowerCase().includes("refactor") ||
+              c.message.includes("重构") ||
+              c.message.includes("优化")
+          );
+
+          if (featureCommits.length > 0) {
+            report.push(`\n**新功能开发** (${featureCommits.length} 项)：`);
+            featureCommits.slice(0, 5).forEach((c) => {
+              report.push(`- ${c.message}`);
+            });
+          }
+
+          if (fixCommits.length > 0) {
+            report.push(`\n**问题修复** (${fixCommits.length} 项)：`);
+            fixCommits.slice(0, 5).forEach((c) => {
+              report.push(`- ${c.message}`);
+            });
+          }
+
+          if (refactorCommits.length > 0) {
+            report.push(`\n**代码优化** (${refactorCommits.length} 项)：`);
+            refactorCommits.slice(0, 5).forEach((c) => {
+              report.push(`- ${c.message}`);
+            });
+          }
         }
 
         return {

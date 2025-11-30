@@ -1,6 +1,6 @@
 # Git MCP Server
 
-一个用于执行 Git 操作的 Model Context Protocol (MCP) 服务器。
+一个用于执行 Git 操作的 Model Context Protocol (MCP) 服务器，集成 Ollama AI 生成智能周报。
 
 ## 功能特性
 
@@ -16,6 +16,21 @@
 - **git_branch** - 管理分支（列出、创建、删除）
 - **git_checkout** - 切换分支
 - **git_remote** - 管理远程仓库
+- **git_weekly_report** - 🆕 生成 AI 驱动的周报总结
+
+## 前置要求
+
+### Ollama 设置（用于 AI 周报功能）
+
+1. 安装 Ollama: https://ollama.com
+2. 拉取模型:
+```bash
+ollama pull deepseek-r1:1.5b
+# 或使用其他模型，如:
+# ollama pull qwen:7b
+# ollama pull llama2
+```
+3. 确保 Ollama 服务运行在 `http://localhost:11434`
 
 ## 安装
 
@@ -89,6 +104,50 @@ npm run dev
 ```
 
 ### 推送到远程
+```json
+{
+  "name": "git_push",
+  "arguments": {
+    "directory": "/path/to/your/repo",
+    "remote": "origin",
+    "branch": "main"
+  }
+}
+```
+
+### 🌟 生成 AI 周报（新功能）
+```json
+{
+  "name": "git_weekly_report",
+  "arguments": {
+    "directory": "/path/to/your/repo",
+    "days": 7,
+    "author": "your-name",
+    "branch": "main",
+    "model": "deepseek-r1:1.5b",
+    "useAI": true
+  }
+}
+```
+
+**参数说明**：
+- `directory` (必需): Git 仓库路径
+- `days` (可选): 统计天数，默认 7 天
+- `author` (可选): 指定作者筛选
+- `branch` (可选): 指定分支
+- `model` (可选): Ollama 模型名称，默认 `deepseek-r1:1.5b`
+- `useAI` (可选): 是否使用 AI 总结，默认 `true`
+
+**功能亮点**：
+- 📊 自动统计提交次数、代码行数、参与人数
+- 📝 按日期整理提交记录
+- 🤖 使用 Ollama AI 生成专业的工作总结
+- 🎯 智能分类：新功能、Bug修复、代码优化
+- 💡 支持多种开源模型：DeepSeek、Qwen、Llama 等
+
+## 许可证
+
+ISC
 ```json
 {
   "name": "git_push",
