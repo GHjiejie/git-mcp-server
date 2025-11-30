@@ -2,6 +2,7 @@
 
 import { Request, Response } from "express";
 import { ChatRequest } from "../types.js";
+import { ollamaService } from "../services/ollama-service.js";
 
 export class ChatController {
   /**
@@ -15,13 +16,23 @@ export class ChatController {
     res.setHeader("Connection", "keep-alive");
 
     try {
-      // 模拟 AI 响应
-      const response = `这是一个模拟的 AI 响应。您说: "${message}"`;
-      const words = response.split("");
+      // 检查 Ollama 服务是否可用
+      const isAvailable = await ollamaService.isAvailable();
 
-      for (const word of words) {
-        res.write(`data: ${JSON.stringify({ content: word })}\n\n`);
-        await new Promise((resolve) => setTimeout(resolve, 30));
+      if (!isAvailable) {
+        res.write(
+          `data: ${JSON.stringify({
+            content: "⚠️ Ollama 服务不可用，请确保已启动 Ollama 服务。\n\n",
+          })}\n\n`
+        );
+        res.write("data: [DONE]\n\n");
+        res.end();
+        return;
+      }
+
+      // 使用 Ollama 生成流式响应
+      for await (const chunk of ollamaService.streamChat(message)) {
+        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
       }
 
       res.write("data: [DONE]\n\n");
